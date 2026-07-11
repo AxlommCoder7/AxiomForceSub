@@ -1,16 +1,34 @@
 #AxiomForceSub --by OwnerAxiom
-from .mongo import channels
+from .mongo import CHANNELS
 
 
 async def add_channel(chat_id: int):
-    if not await channels.find_one({"_id": chat_id}):
-        await channels.insert_one({"_id": chat_id})
+
+    await CHANNELS.update_one(
+        {"_id": chat_id},
+        {
+            "$setOnInsert": {
+                "_id": chat_id
+            }
+        },
+        upsert=True,
+    )
+
+
+async def delete_channel(chat_id: int):
+
+    await CHANNELS.delete_one(
+        {"_id": chat_id}
+    )
 
 
 async def get_channels():
-    async for chat in channels.find():
+
+    async for chat in CHANNELS.find():
+
         yield chat["_id"]
 
 
 async def total_channels():
-    return await channels.count_documents({})
+
+    return await CHANNELS.count_documents({})
