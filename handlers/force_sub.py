@@ -1,6 +1,10 @@
-#AxiomForceSub --by OwnerAxiom
-from pyrogram import Client
-from pyrogram import filters
+from pyrogram import Client, filters
+from pyrogram.enums import ChatMemberStatus
+from pyrogram.errors import (
+    UsernameNotOccupied,
+    PeerIdInvalid,
+    UserNotParticipant
+)
 
 from config import OWNER_ID
 from database.settings import (
@@ -8,54 +12,209 @@ from database.settings import (
     get_force_sub,
     remove_force_sub
 )
+from utils.logger import send_log
 
+
+# ------------------------------------------
+# Set Force Subscribe
+# ------------------------------------------
 
 @Client.on_message(filters.private & filters.command("setfsub"))
-async def setfsub(client, message):
+async def set_fsub(client, message):
 
     if message.from_user.id != OWNER_ID:
         return
 
     if len(message.command) != 2:
+
         return await message.reply_text(
-            "/setfsub -100xxxxxxxxxx"
+            "Usage:\n\n"
+            "<code>/setfsub -100xxxxxxxxxx</code>\n"
+            "or\n"
+            "<code>/setfsub @channelusername</code>"
         )
 
-    chat = int(message.command[1])
+    target = message.command[1]
 
-    await set_force_sub(chat)
+    try:
 
-    await message.reply_text(
-        f"✅ Force Subscribe Set\n\n{chat}"
+        chat = await client.get_chat(target)
+
+    except (PeerIdInvalid, UsernameNotOccupied):
+
+        return await message.reply_text(
+            "❌ Invalid Chat ID / Username."
+        )
+
+    try:
+
+        me = await client.get_me()
+
+        member = await client.get_chat_member(
+            chat.id,
+            me.id
+        )
+
+        if member.status not in (
+            ChatMemberStatus.ADMINISTRATOR,
+            ChatMemberStatus.OWNER
+        ):
+
+            return await message.reply_text(
+                "❌ Make me admin first."
+            )
+
+    except Exception:
+
+        return await message.reply_text(
+            "❌ I must be inside that channel."
+        )
+
+    await set_force_sub(
+        OWNER_ID,
+        chat.id
     )
 
+    await send_log(
+        f"⚙ <b>Force Subscribe Updated</b>\n\n"
+        f"Chat : {chat.title}\n"
+        f"ID : <code>{chat.id}</code>"
+    )
+
+    await message.reply_text(
+        f"""
+✅ <b>Force Subscribe Enabled</b>
+
+<b>Channel :</b> {chat.title}
+
+<b>ID :</b>
+
+<code>{chat.id}</code>
+"""
+    )
+
+
+# ------------------------------------------
+# Remove Force Subscribe
+# ------------------------------------------
 
 @Client.on_message(filters.private & filters.command("removefsub"))
-async def removefsub(client, message):
+async def remove_fsub(client, message):
 
     if message.from_user.id != OWNER_ID:
         return
 
-    await remove_force_sub()
+    force = await get_force_sub(OWNER_ID)
+
+    if not force:
+
+        return await message.reply_text(
+            "Force Subscribe Already Disabled."
+        )
+
+    await remove_force_sub(
+        OWNER_ID
+    )
+
+    await send_log(
+        "❌ Force Subscribe Removed."
+    )
 
     await message.reply_text(
-        "✅ Force Subscribe Removed."
+        "✅ Force Subscribe Disabled."
     )
 
 
+# ------------------------------------------
+# Show Current
+# ------------------------------------------
+
 @Client.on_message(filters.private & filters.command("fsub"))
-async def fsub(client, message):
+async def current_force_sub(client, message):
 
     if message.from_user.id != OWNER_ID:
         return
 
-    chat = await get_force_sub()
+    force = await get_force_sub(
+        OWNER_ID
+    )
 
-    if chat:
-        await message.reply_text(
-            f"Current Force Subscribe\n\n{chat}"
+    if not force:
+
+        return await message.reply_text(
+            "No Force Subscribe Configured."
         )
-    else:
-        await message.reply_text(
+
+    try:
+
+        chat = await client.get_chat(force)
+
+        text = f"""
+📢 <b>Current Force Subscribe</b>
+
+<b>Name :</b> {chat.title}
+
+<b>ID :</b>
+
+<code>{chat.id}</code>
+"""
+
+    except Exception:
+
+        text = f"""
+📢 <b>Current Force Subscribe</b>
+
+<code>{force}</code>
+"""
+
+    await message.reply_text(text)
+
+
+# ------------------------------------------
+# Check Command
+# ------------------------------------------
+
+@Client.on_message(filters.private & filters.command("checkfsub"))
+async def check_fsub(client, message):
+
+    if message.from_user.id != OWNER_ID:
+        return
+
+    force = await get_force_sub(
+        OWNER_ID
+    )
+
+    if not force:
+
+        return await message.reply_text(
             "No Force Subscribe Set."
+        )
+
+    try:
+
+        member = await client.get_chat_member(
+            force,
+            message.from_user.id
+        )
+
+        if member.status in (
+            ChatMemberStatus.MEMBER,
+            ChatMemberStatus.ADMINISTRATOR,
+            ChatMemberStatus.OWNER
+        ):
+
+            return await message.reply_text(
+                "✅ You're Joined."
+            )
+
+    except UserNotParticipant:
+
+        return await message.reply_text(
+            "❌ You're Not Joined."
+        )
+
+    except Exception as e:
+
+        return await message.reply_text(
+            f"Error\n\n<code>{e}</code>"
         )
