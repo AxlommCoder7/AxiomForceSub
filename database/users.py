@@ -1,20 +1,41 @@
 #AxiomForceSub --by OwnerAxiom
-from .mongo import users
+from .mongo import USERS
 
 
 async def add_user(user_id: int):
-    if not await users.find_one({"_id": user_id}):
-        await users.insert_one({"_id": user_id})
+
+    await USERS.update_one(
+        {"_id": user_id},
+        {
+            "$setOnInsert": {
+                "_id": user_id
+            }
+        },
+        upsert=True,
+    )
+
+
+async def delete_user(user_id: int):
+
+    await USERS.delete_one(
+        {"_id": user_id}
+    )
 
 
 async def is_user(user_id: int):
-    return await users.find_one({"_id": user_id})
+
+    return await USERS.find_one(
+        {"_id": user_id}
+    )
 
 
 async def get_users():
-    async for user in users.find():
+
+    async for user in USERS.find():
+
         yield user["_id"]
 
 
 async def total_users():
-    return await users.count_documents({})
+
+    return await USERS.count_documents({})
