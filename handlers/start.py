@@ -1,80 +1,114 @@
 from pyrogram import Client, filters
-from pyrogram.enums import ChatType
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
-from filters.forcesub import force_sub_filter
+from config import OWNER_ID
 from database.users import add_user
 from database.groups import add_group
 from database.channels import add_channel
-from utils.logger import LOGGER
+from database.settings import get_force_sub
+from utils.logger import send_log
 
 
 START_TEXT = """
-👋 **Welcome {}**
+👋 <b>Welcome {}</b>
 
-I'm a powerful Telegram Management Bot.
+I'm a powerful Force Subscribe Bot.
 
-✨ Features:
+<b>Features</b>
 
 • Force Subscribe
 • Broadcast
 • Statistics
-• Logs
+• Logger
 • Git Pull
-• More Coming Soon
+• Multi Group Support
+
+Use the buttons below to get started.
 """
 
-START_BUTTONS = InlineKeyboardMarkup(
-    [
+
+@Client.on_message(filters.private & filters.command("start"))
+async def start_private(client, message):
+
+    user = message.from_user
+
+    await add_user(user.id)
+
+    await send_log(
+        f"👤 <b>New User</b>\n\n"
+        f"Name : {user.mention}\n"
+        f"ID : <code>{user.id}</code>"
+    )
+
+    force = await get_force_sub(OWNER_ID)
+
+    buttons = []
+
+    if force:
+
+        try:
+
+            chat = await client.get_chat(force)
+
+            if chat.username:
+
+                buttons.append(
+                    [
+                        InlineKeyboardButton(
+                            "📢 Join Channel",
+                            url=f"https://t.me/{chat.username}"
+                        )
+                    ]
+                )
+
+        except:
+            pass
+
+    buttons.append(
         [
             InlineKeyboardButton(
                 "➕ Add Me",
-                url="https://t.me/YourBot?startgroup=true"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "Support",
-                url="https://t.me/YourSupport"
-            ),
-            InlineKeyboardButton(
-                "Updates",
-                url="https://t.me/YourChannel"
+                url=f"https://t.me/{(await client.get_me()).username}?startgroup=true"
             )
         ]
-    ]
-)
+    )
 
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "ℹ Help",
+                callback_data="help"
+            ),
+            InlineKeyboardButton(
+                "📊 Stats",
+                callback_data="stats"
+            )
+        ]
+    )
 
-@Client.on_message(filters.private & filters.command("start") & force_sub_filter)
-async def start_private(client, message):
-
-    await add_user(message.from_user.id)
-
-    LOGGER.info(f"User Started : {message.from_user.id}")
-
-    await message.reply_photo(
-        photo="assets/start.jpg",
-        caption=START_TEXT.format(message.from_user.mention),
-        reply_markup=START_BUTTONS
+    await message.reply_text(
+        START_TEXT.format(user.mention),
+        disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 
-@Client.on_message(filters.group & filters.command("start"))
-async def start_group(client, message):
+@Client.on_message(
+    filters.group
+    & filters.incoming
+)
+async def register_group(client, message):
 
     await add_group(message.chat.id)
 
-    LOGGER.info(f"Group Registered : {message.chat.id}")
 
-    await message.reply_text(
-        "✅ Bot is Active."
-    )
-
-
-@Client.on_message(filters.channel & filters.command("start"))
-async def start_channel(client, message):
+@Client.on_message(
+    filters.channel
+    & filters.incoming
+)
+async def register_channel(client, message):
 
     await add_channel(message.chat.id)
-
-    LOGGER.info(f"Channel Registered : {message.chat.id}")
