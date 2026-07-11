@@ -103,6 +103,9 @@ async def main():
 
     load_plugins()
 
+    print("Dispatcher Groups:", app.dispatcher.groups)
+    print("Total Handlers:", sum(len(v) for v in app.dispatcher.groups.values()))
+
     await app.start()
 
     await startup()
