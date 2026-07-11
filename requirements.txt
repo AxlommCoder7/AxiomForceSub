@@ -7,3 +7,4 @@ python-dotenv
 GitPython
 psutil
 aiofiles
+requests
