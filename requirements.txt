@@ -1,1 +1,9 @@
 #AxiomForceSub --by OwnerAxiom
+
+pyrogram==2.0.106
+tgcrypto
+motor
+python-dotenv
+GitPython
+psutil
+aiofiles
