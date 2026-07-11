@@ -1,54 +1,149 @@
-#AxiomForceSub --by OwnerAxiom
 import logging
-import traceback
+import os
+from logging.handlers import RotatingFileHandler
 
-from loader import app
 from config import LOGGER_ID
+from loader import app
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    handlers=[
-        logging.FileHandler("logs/bot.log", encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+# ===================================================
+# Log Directory
+# ===================================================
+
+LOG_DIR = "logs"
+
+os.makedirs(
+    LOG_DIR,
+    exist_ok=True
 )
 
-LOGGER = logging.getLogger("AxiomManagerBot")
+LOG_FILE = os.path.join(
+    LOG_DIR,
+    "bot.log"
+)
+
+# ===================================================
+# Logger
+# ===================================================
+
+LOGGER = logging.getLogger("AxiomForceSub")
+
+LOGGER.setLevel(logging.INFO)
+
+FORMAT = logging.Formatter(
+    "[%(asctime)s] | %(levelname)s | %(name)s | %(message)s",
+    "%d-%m-%Y %H:%M:%S"
+)
+
+FILE_HANDLER = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10 * 1024 * 1024,
+    backupCount=10,
+    encoding="utf-8"
+)
+
+FILE_HANDLER.setFormatter(FORMAT)
+
+CONSOLE = logging.StreamHandler()
+
+CONSOLE.setFormatter(FORMAT)
+
+if not LOGGER.handlers:
+
+    LOGGER.addHandler(FILE_HANDLER)
+
+    LOGGER.addHandler(CONSOLE)
 
 
-async def send_log(text: str):
+# ===================================================
+# Logger Methods
+# ===================================================
+
+def info(text):
+
+    LOGGER.info(text)
+
+
+def warning(text):
+
+    LOGGER.warning(text)
+
+
+def error(text):
+
+    LOGGER.error(text)
+
+
+def critical(text):
+
+    LOGGER.critical(text)
+
+
+def exception(text):
+
+    LOGGER.exception(text)
+
+
+# ===================================================
+# Telegram Logger
+# ===================================================
+
+async def send_log(
+    text: str,
+    disable_notification: bool = True
+):
+
+    if not LOGGER_ID:
+        return
 
     try:
+
+        if len(text) > 4000:
+            text = text[:3990]
+
         await app.send_message(
-            LOGGER_ID,
-            text,
-            disable_web_page_preview=True
+            chat_id=LOGGER_ID,
+            text=text,
+            disable_web_page_preview=True,
+            disable_notification=disable_notification,
         )
-    except Exception:
-        LOGGER.exception("Failed to send logger message.")
 
+    except Exception as e:
 
-async def send_error(error: Exception):
-
-    err = "".join(
-        traceback.format_exception(
-            type(error),
-            error,
-            error.__traceback__
+        LOGGER.error(
+            f"Telegram Logger Error : {e}"
         )
+
+
+# ===================================================
+# Startup / Shutdown
+# ===================================================
+
+async def startup_log():
+
+    await send_log(
+        "🟢 <b>Axiom ForceSub Started Successfully.</b>"
     )
 
-    if len(err) > 3900:
-        err = err[:3900]
 
-    try:
+async def shutdown_log():
 
-        await app.send_message(
-            LOGGER_ID,
-            f"🚨 **Bot Error**\n\n```{err}```"
-        )
+    await send_log(
+        "🔴 <b>Axiom ForceSub Stopped.</b>"
+    )
 
-    except Exception:
 
-        LOGGER.exception("Unable to send error log.")
+# ===================================================
+# Error Logger
+# ===================================================
+
+async def log_exception(exc):
+
+    text = f"""
+🚨 <b>Unhandled Exception</b>
+
+<pre>{exc}</pre>
+"""
+
+    await send_log(text)
+
+    LOGGER.exception(exc)
