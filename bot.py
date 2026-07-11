@@ -1,48 +1,131 @@
 #AxiomForceSub --by OwnerAxiom
-from loader import app
+import asyncio
+import importlib
+import logging
+import pkgutil
+import traceback
 
-from utils.logger import LOGGER, send_log
+from pyrogram import idle
 
-import handlers.start
-import handlers.callbacks
-import handlers.force_sub
-import handlers.broadcast
-import handlers.admin
-import handlers.logs
-import handlers.stats
-import handlers.gitpull
+from loader import app, mongo
+from config import LOGGER_ID
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] %(name)s : %(message)s"
+)
+
+LOGGER = logging.getLogger("AxiomForceSub")
+
+
+# -----------------------------
+# Load All Handlers
+# -----------------------------
+
+def load_plugins():
+    import handlers
+
+    for module in pkgutil.iter_modules(handlers.__path__):
+        importlib.import_module(f"handlers.{module.name}")
+        LOGGER.info(f"Loaded -> handlers.{module.name}")
+
+
+# -----------------------------
+# Startup
+# -----------------------------
 
 async def startup():
 
-    LOGGER.info("Bot Started")
+    try:
+        await mongo.admin.command("ping")
+        LOGGER.info("MongoDB Connected")
 
-    await send_log(
-        "🟢 **Bot Started Successfully**"
-    )
+    except Exception as e:
+        LOGGER.error(e)
+        raise SystemExit
 
+    me = await app.get_me()
+
+    LOGGER.info(f"Bot : @{me.username}")
+    LOGGER.info(f"ID  : {me.id}")
+
+    if LOGGER_ID:
+
+        try:
+
+            await app.send_message(
+                LOGGER_ID,
+                f"""
+🟢 <b>Bot Started</b>
+
+<b>Name :</b> {me.first_name}
+
+<b>Username :</b> @{me.username}
+
+<b>ID :</b> <code>{me.id}</code>
+"""
+            )
+
+        except Exception:
+
+            pass
+
+
+# -----------------------------
+# Shutdown
+# -----------------------------
 
 async def shutdown():
 
-    LOGGER.info("Bot Stopped")
+    LOGGER.info("Stopping...")
 
-    await send_log(
-        "🔴 **Bot Stopped**"
-    )
+    if LOGGER_ID:
+
+        try:
+
+            await app.send_message(
+                LOGGER_ID,
+                "🔴 <b>Bot Stopped.</b>"
+            )
+
+        except Exception:
+
+            pass
+
+    mongo.close()
 
 
-app.start()
+# -----------------------------
+# Main
+# -----------------------------
 
-app.loop.run_until_complete(
-    startup()
-)
+async def main():
 
-LOGGER.info("Bot Running...")
+    load_plugins()
 
-app.idle()
+    await app.start()
 
-app.loop.run_until_complete(
-    shutdown()
-)
+    await startup()
 
-app.stop()
+    LOGGER.info("Bot Running...")
+
+    await idle()
+
+    await shutdown()
+
+    await app.stop()
+
+
+if __name__ == "__main__":
+
+    try:
+
+        asyncio.run(main())
+
+    except KeyboardInterrupt:
+
+        LOGGER.info("Stopped By Keyboard.")
+
+    except Exception:
+
+        LOGGER.error(traceback.format_exc())
