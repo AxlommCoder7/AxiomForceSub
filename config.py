@@ -4,16 +4,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-OWNER_ID = int(os.getenv("OWNER_ID"))
-LOGGER_ID = int(os.getenv("LOGGER_ID"))
+def getenv(name: str, default=None, required=False):
+    value = os.getenv(name, default)
 
-MONGO_URI = os.getenv("MONGO_URI")
+    if required and (value is None or value == ""):
+        raise ValueError(f"Missing required environment variable: {name}")
 
-FORCE_SUB = os.getenv("FORCE_SUB")
+    return value
 
-GIT_REPO = os.getenv("GIT_REPO")
-GIT_BRANCH = os.getenv("GIT_BRANCH", "main")
+
+API_ID = int(getenv("API_ID", required=True))
+API_HASH = getenv("API_HASH", required=True)
+BOT_TOKEN = getenv("BOT_TOKEN", required=True)
+
+OWNER_ID = int(getenv("OWNER_ID", required=True))
+LOGGER_ID = int(getenv("LOGGER_ID", 0))
+
+MONGO_URI = getenv("MONGO_URI", required=True)
+
+FORCE_SUB = getenv("FORCE_SUB", "")
+
+GIT_REPO = getenv("GIT_REPO", "")
+GIT_BRANCH = getenv("GIT_BRANCH", "main")
+
+BOT_NAME = getenv("BOT_NAME", "Axiom ForceSub")
+BOT_USERNAME = getenv("BOT_USERNAME", "")
+
+VERSION = "1.0.0"
