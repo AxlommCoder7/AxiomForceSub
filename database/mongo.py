@@ -1,8 +1,27 @@
 #AxiomForceSub --by OwnerAxiom
-from loader import db
+from loader import (
+    usersdb,
+    groupsdb,
+    channelsdb,
+    settingsdb,
+    botsdb,
+    broadcastdb,
+    logsdb,
+    statsdb,
+)
 
-users = db.users
-groups = db.groups
-channels = db.channels
-settings = db.settings
-stats = db.stats
+USERS = usersdb
+
+GROUPS = groupsdb
+
+CHANNELS = channelsdb
+
+SETTINGS = settingsdb
+
+BOTS = botsdb
+
+BROADCAST = broadcastdb
+
+LOGS = logsdb
+
+STATS = statsdb
