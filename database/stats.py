@@ -5,6 +5,7 @@ from .channels import total_channels
 
 
 async def get_stats():
+
     return {
         "users": await total_users(),
         "groups": await total_groups(),
