@@ -1,53 +1,84 @@
-#AxiomForceSub --by OwnerAxiom
+import asyncio
+import time
+
 from pyrogram import Client, filters
 from pyrogram.errors import (
     FloodWait,
     UserIsBlocked,
     InputUserDeactivated,
-    PeerIdInvalid
+    PeerIdInvalid,
+    ChatWriteForbidden,
+    ChatAdminRequired
 )
-
-import asyncio
 
 from config import OWNER_ID
-
 from database.users import (
     get_users,
-    del_user
+    delete_user
 )
-
 from database.groups import (
     get_groups,
-    del_group
+    delete_group
 )
-
 from database.channels import (
     get_channels,
-    del_channel
+    delete_channel
 )
+from utils.logger import send_log
 
 
-async def send_to_users(client, message, reply):
+# ==========================================================
+# Broadcast Engine
+# ==========================================================
 
-    success = 0
-    failed = 0
 
-    async for user in get_users():
+class Broadcaster:
+
+    def __init__(self):
+
+        self.success = 0
+
+        self.failed = 0
+
+        self.deleted = 0
+
+        self.total = 0
+
+        self.start_time = time.time()
+
+    async def flood(self, seconds):
+
+        await asyncio.sleep(seconds)
+
+    async def send(self, client, chat_id, msg):
 
         try:
 
-            msg = await reply.copy(user)
+            copied = await msg.copy(chat_id)
 
             try:
-                await msg.pin()
-            except:
+
+                await copied.pin(
+                    disable_notification=True
+                )
+
+            except Exception:
+
                 pass
 
-            success += 1
+            self.success += 1
+
+            return True
 
         except FloodWait as e:
 
-            await asyncio.sleep(e.value)
+            await self.flood(e.value)
+
+            return await self.send(
+                client,
+                chat_id,
+                msg
+            )
 
         except (
             UserIsBlocked,
@@ -55,176 +86,472 @@ async def send_to_users(client, message, reply):
             PeerIdInvalid
         ):
 
-            await del_user(user)
+            self.deleted += 1
 
-            failed += 1
+            return False
+
+        except (
+            ChatWriteForbidden,
+            ChatAdminRequired
+        ):
+
+            self.failed += 1
+
+            return False
 
         except Exception:
 
-            failed += 1
+            self.failed += 1
 
-    return success, failed
+            return False
 
 
-async def send_to_groups(client, message, reply):
+broadcaster = Broadcaster()
 
-    success = 0
-    failed = 0
 
-    async for chat in get_groups():
+# ==========================================================
+# Users
+# ==========================================================
 
-        try:
 
-            msg = await reply.copy(chat)
+async def broadcast_users(
+    client,
+    message
+):
+
+    broadcaster.success = 0
+
+    broadcaster.failed = 0
+
+    broadcaster.deleted = 0
+
+    broadcaster.total = 0
+
+    async for user in get_users():
+
+        broadcaster.total += 1
+
+        ok = await broadcaster.send(
+            client,
+            user,
+            message
+        )
+
+        if not ok:
 
             try:
-                await msg.pin()
-            except:
+
+                await delete_user(user)
+
+            except Exception:
+
                 pass
 
-            success += 1
+    return {
+        "success": broadcaster.success,
+        "failed": broadcaster.failed,
+        "deleted": broadcaster.deleted,
+        "total": broadcaster.total
+    }
 
-        except Exception:
-
-            await del_group(chat)
-
-            failed += 1
-
-    return success, failed
+# ==========================================================
+# Groups
+# ==========================================================
 
 
-async def send_to_channels(client, message, reply):
+async def broadcast_groups(
+    client,
+    message
+):
 
-    success = 0
-    failed = 0
+    broadcaster.success = 0
 
-    async for chat in get_channels():
+    broadcaster.failed = 0
 
-        try:
+    broadcaster.deleted = 0
 
-            msg = await reply.copy(chat)
+    broadcaster.total = 0
+
+    async for group in get_groups():
+
+        broadcaster.total += 1
+
+        ok = await broadcaster.send(
+            client,
+            group,
+            message
+        )
+
+        if not ok:
 
             try:
-                await msg.pin()
-            except:
+
+                await delete_group(group)
+
+            except Exception:
+
                 pass
 
-            success += 1
-
-        except Exception:
-
-            await del_channel(chat)
-
-            failed += 1
-
-    return success, failed
+    return {
+        "success": broadcaster.success,
+        "failed": broadcaster.failed,
+        "deleted": broadcaster.deleted,
+        "total": broadcaster.total
+    }
 
 
-@Client.on_message(filters.private & filters.command("broadcast"))
-async def broadcast(client, message):
+# ==========================================================
+# Channels
+# ==========================================================
+
+
+async def broadcast_channels(
+    client,
+    message
+):
+
+    broadcaster.success = 0
+
+    broadcaster.failed = 0
+
+    broadcaster.deleted = 0
+
+    broadcaster.total = 0
+
+    async for channel in get_channels():
+
+        broadcaster.total += 1
+
+        ok = await broadcaster.send(
+            client,
+            channel,
+            message
+        )
+
+        if not ok:
+
+            try:
+
+                await delete_channel(channel)
+
+            except Exception:
+
+                pass
+
+    return {
+        "success": broadcaster.success,
+        "failed": broadcaster.failed,
+        "deleted": broadcaster.deleted,
+        "total": broadcaster.total
+    }
+
+
+# ==========================================================
+# Progress Updater
+# ==========================================================
+
+
+async def update_progress(
+    status,
+    title,
+    done,
+    total
+):
+
+    try:
+
+        percent = 0
+
+        if total != 0:
+
+            percent = round(
+                (done / total) * 100,
+                2
+            )
+
+        await status.edit_text(
+            f"""
+📢 <b>{title}</b>
+
+<b>Processed :</b> {done}/{total}
+
+<b>Success :</b> {broadcaster.success}
+
+<b>Failed :</b> {broadcaster.failed}
+
+<b>Deleted :</b> {broadcaster.deleted}
+
+<b>Progress :</b> {percent} %
+"""
+        )
+
+    except Exception:
+
+        pass
+
+
+# ==========================================================
+# Final Report
+# ==========================================================
+
+
+def build_report(title):
+
+    taken = round(
+        time.time() - broadcaster.start_time,
+        2
+    )
+
+    return f"""
+✅ <b>{title}</b>
+
+━━━━━━━━━━━━━━━
+
+👤 <b>Total :</b> {broadcaster.total}
+
+✅ <b>Success :</b> {broadcaster.success}
+
+❌ <b>Failed :</b> {broadcaster.failed}
+
+🗑 <b>Removed :</b> {broadcaster.deleted}
+
+⏱ <b>Time :</b> {taken} sec
+"""
+
+
+# ==========================================================
+# Logger Helper
+# ==========================================================
+
+
+async def log_broadcast(
+    mode,
+    report
+):
+
+    try:
+
+        await send_log(
+            f"""
+📣 <b>Broadcast Completed</b>
+
+<b>Mode :</b> {mode}
+
+{report}
+"""
+        )
+
+    except Exception:
+
+        pass
+
+# ==========================================================
+# Broadcast Command
+# ==========================================================
+
+
+@Client.on_message(
+    filters.private &
+    filters.command("broadcast")
+)
+async def broadcast_handler(
+    client,
+    message
+):
 
     if message.from_user.id != OWNER_ID:
         return
 
-    if not message.reply_to_message:
-
-        return await message.reply_text(
-            "Reply to any message.\n\n"
-            "/broadcast users\n"
-            "/broadcast groups\n"
-            "/broadcast channels\n"
-            "/broadcast all"
-        )
-
     if len(message.command) != 2:
 
         return await message.reply_text(
-            "Choose users/groups/channels/all"
+            """
+Usage:
+
+/broadcast users
+
+/broadcast groups
+
+/broadcast channels
+
+/broadcast all
+
+Reply to a message.
+"""
         )
 
-    target = message.command[1].lower()
+    if not message.reply_to_message:
+
+        return await message.reply_text(
+            "Reply to a message first."
+        )
+
+    mode = message.command[1].lower()
 
     status = await message.reply_text(
-        "📤 Broadcast Started..."
+        "📢 Broadcast Started..."
     )
 
-    total_success = 0
-    total_failed = 0
+    broadcaster.start_time = time.time()
 
-    if target == "users":
+    source = message.reply_to_message
 
-        s, f = await send_to_users(
+    # ----------------------------------
+    # Users
+    # ----------------------------------
+
+    if mode == "users":
+
+        result = await broadcast_users(
             client,
-            message,
-            message.reply_to_message
+            source
         )
 
-        total_success += s
-        total_failed += f
+        report = build_report(
+            "Users Broadcast"
+        )
 
-    elif target == "groups":
+        await status.edit_text(
+            report
+        )
 
-        s, f = await send_to_groups(
+        await log_broadcast(
+            "Users",
+            report
+        )
+
+        return
+
+    # ----------------------------------
+    # Groups
+    # ----------------------------------
+
+    if mode == "groups":
+
+        result = await broadcast_groups(
             client,
-            message,
-            message.reply_to_message
+            source
         )
 
-        total_success += s
-        total_failed += f
+        report = build_report(
+            "Groups Broadcast"
+        )
 
-    elif target == "channels":
+        await status.edit_text(
+            report
+        )
 
-        s, f = await send_to_channels(
+        await log_broadcast(
+            "Groups",
+            report
+        )
+
+        return
+
+    # ----------------------------------
+    # Channels
+    # ----------------------------------
+
+    if mode == "channels":
+
+        result = await broadcast_channels(
             client,
-            message,
-            message.reply_to_message
+            source
         )
 
-        total_success += s
-        total_failed += f
+        report = build_report(
+            "Channels Broadcast"
+        )
 
-    elif target == "all":
+        await status.edit_text(
+            report
+        )
 
-        s, f = await send_to_users(
+        await log_broadcast(
+            "Channels",
+            report
+        )
+
+        return
+
+    # ----------------------------------
+    # All
+    # ----------------------------------
+
+    if mode == "all":
+
+        broadcaster.success = 0
+        broadcaster.failed = 0
+        broadcaster.deleted = 0
+        broadcaster.total = 0
+
+        users = await broadcast_users(
             client,
-            message,
-            message.reply_to_message
+            source
         )
 
-        total_success += s
-        total_failed += f
-
-        s, f = await send_to_groups(
+        groups = await broadcast_groups(
             client,
-            message,
-            message.reply_to_message
+            source
         )
 
-        total_success += s
-        total_failed += f
-
-        s, f = await send_to_channels(
+        channels = await broadcast_channels(
             client,
-            message,
-            message.reply_to_message
+            source
         )
 
-        total_success += s
-        total_failed += f
-
-    else:
-
-        return await status.edit_text(
-            "Invalid Target."
+        broadcaster.success = (
+            users["success"]
+            + groups["success"]
+            + channels["success"]
         )
+
+        broadcaster.failed = (
+            users["failed"]
+            + groups["failed"]
+            + channels["failed"]
+        )
+
+        broadcaster.deleted = (
+            users["deleted"]
+            + groups["deleted"]
+            + channels["deleted"]
+        )
+
+        broadcaster.total = (
+            users["total"]
+            + groups["total"]
+            + channels["total"]
+        )
+
+        report = build_report(
+            "Global Broadcast"
+        )
+
+        await status.edit_text(
+            report
+        )
+
+        await log_broadcast(
+            "All",
+            report
+        )
+
+        return
+
+    # ----------------------------------
+    # Invalid
+    # ----------------------------------
 
     await status.edit_text(
-        f"""
-✅ Broadcast Completed
+        """
+Invalid Target.
 
-Success : {total_success}
+Available:
 
-Failed : {total_failed}
+users
+groups
+channels
+all
 """
     )
